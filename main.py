@@ -39,6 +39,44 @@ def conversation_template(prompt: str, image_path: str):
         },
     ] 
 
+####################################################################################
+## Copied Directly from TRL -> generate log probs per token                 ########
+## https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py ########
+####################################################################################
+
+def selective_log_softmax(logits, index):
+    """
+    A memory-efficient implementation of the common `log_softmax -> gather` operation.
+
+    This function is equivalent to the following naive implementation:
+    ```python
+    logps = torch.gather(logits.log_softmax(-1), dim=-1, index=index.unsqueeze(-1)).squeeze(-1)
+    ```
+
+    Args:
+        logits (`torch.Tensor`):
+            Logits tensor of shape `(..., num_classes)`.
+        index (`torch.Tensor`):
+            Index tensor of shape `(...)`, specifying the positions to gather from the log-softmax output.
+
+    Returns:
+        `torch.Tensor`:
+            Gathered log probabilities with the same shape as `index`.
+    """
+    if logits.dtype in [torch.float32, torch.float64]:
+        selected_logits = torch.gather(logits, dim=-1, index=index.unsqueeze(-1)).squeeze(-1)
+        # loop to reduce peak mem consumption
+        logsumexp_values = torch.stack([torch.logsumexp(lg, dim=-1) for lg in logits])
+        per_token_logps = selected_logits - logsumexp_values  # log_softmax(x_i) = x_i - logsumexp(x)
+    else:
+        # logsumexp approach is unstable with bfloat16, fall back to slightly less efficent approach
+        per_token_logps = []
+        for row_logits, row_labels in zip(logits, index):  # loop to reduce peak mem consumption
+            row_logps = F.log_softmax(row_logits, dim=-1)
+            row_per_token_logps = row_logps.gather(dim=-1, index=row_labels.unsqueeze(-1)).squeeze(-1)
+            per_token_logps.append(row_per_token_logps)
+        per_token_logps = torch.stack(per_token_logps)
+    return per_token_logps
 
 def generate_completions(model, tokenizer, image_path: str, prompt: str, num_completions, temperature: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str], str, int, torch.Tensor]:
     # System prompt and user prompt
@@ -93,21 +131,24 @@ def sequence_log_probs(model, input_ids, attention_mask, image_path, tokenizer, 
     conversation = conversation_template(prompt, image_path)
     
     text = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False, padding_side="left")
-
     images, videos, video_kwarg = process_vision_info(conversation, return_video_kwargs=True)
-
     inputs = tokenizer(text=text, images=images, videos=videos, padding=True, return_tensors="pt", padding_side="left", **video_kwarg).to(model.device).to(model.dtype)
 
-    batched = {k: (v.repeat(input_ids.size(0), *([1]*(v.dim()-1))) if torch.is_tensor(v) else v) for k, v in inputs.items()}
-    batched["input_ids"] = input_ids
-    batched["attention_mask"] = attention_mask
+    batched_inputs = {}
+    for key, value in inputs.items():
+        if torch.is_tensor(value):
+            batched_inputs[key] = value.repeat(input_ids.size(0), *([1] * (value.dim() - 1)))
+        else:
+            batched_inputs[key] = value
+            
+    batched_inputs["input_ids"] = input_ids
+    batched_inputs["attention_mask"] = attention_mask
+    
+    logits = model(**batched_inputs).logits[:, :-1, :]           
 
-    logits = model(**batched).logits[:, :-1, :]           
-    logits = logits[:, -logits_to_keep:, :]               
-
-    log_probs = F.log_softmax(logits, dim=-1)
-    targets = input_ids[:, -logits_to_keep:].unsqueeze(-1)
-    return log_probs.gather(-1, targets).squeeze(-1)
+    input_ids = input_ids[: -logits_to_keep:]
+    logits = logits[:, -logits_to_keep:]
+    return selective_log_softmax(logits, input_ids)
 
 
 def rollout(policy, tokenizer, evaluator, image_path: str, prompt: str, area: float, num_rollouts, temperature: float):
@@ -145,7 +186,15 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
         metrics           
     ) = rollout(policy, tokenizer, evaluator, image_path, prompt, area, num_rollouts, args.temperature)
     
-    # print(f"Completions text: {completions_text}")
+    # Log completions with zero rewards
+    zero_reward_indices = (rewards_all == 0).nonzero(as_tuple=True)[0]
+    if len(zero_reward_indices) > 0:
+        print("\n=== Completions with Zero Rewards ===")
+        for idx in zero_reward_indices:
+            print(f"Completion {idx}:")
+            print(completions_text[idx])
+            print("---")
+        print("=====================================\n")
 
     logits_to_keep = completion_tokens_mask.size(1)
     # Get per-token log probabilites of the completions for the policy model and reference model
@@ -168,7 +217,7 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
     print(f"kl_divergence_per_token mean: {kl_divergence_per_token.mean().item()}")
     
-    # # Calculate the advantage 
+    # Calculate the advantage 
     advantages_per_token = (rewards_all - rewards_all.mean()) / (rewards_all.std() + 1e-8)
     adv_expanded = advantages_per_token.unsqueeze(1) 
 
