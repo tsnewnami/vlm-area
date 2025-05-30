@@ -102,7 +102,7 @@ if __name__ == "__main__":
         print("\nGENERATING SAMPLE FROM TRAINING DATASET:")
         filepath, area = next(train_loader)
         print(f"• Generated Image: {filepath}")
-        print(f"• Shape Area: {area:.2f} square pixels")
+        print(f"• Shape Area: {area} square pixels")
         
         # Testing test dataset
         print("\n" + "-"*50)
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         print("\nGENERATING SAMPLE FROM TEST DATASET:")
         filepath, area = next(test_loader)
         print(f"• Generated Image: {filepath}")
-        print(f"• Shape Area: {area:.2f} square pixels")
+        print(f"• Shape Area: {area} square pixels")
         
         # Display system prompt used for the task
         print("\n" + "-"*50)
