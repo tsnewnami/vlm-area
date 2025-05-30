@@ -104,10 +104,10 @@ def generate_shape_plot(filename="shape.png"):
     plt.savefig(filename, dpi=dpi_val, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
     
-    area = "{:.2f}".format(area)
+    area = round(float(area), 2)
     return filename, area
 
 if __name__ == '__main__':
     img_path1, area1 = generate_shape_plot()
-    print(f"Generated: {img_path1}, Area: {area1}")
+    print(f"Generated: {img_path1}, Area: {area1:.2f}")
 

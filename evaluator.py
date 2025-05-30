@@ -79,9 +79,8 @@ class SingleShapeEvaluator(RewardEvaluator):
         # Area, decimal point, and XML formatting
         self.num_reward_functions = 3
         
-        # Regex pattern to extract area from the model's response
-        # This looks for a number (with optional decimal point and digits) between <answer> and </answer> tags
-        self.area_pattern = re.compile(r'<answer>\s*(\d+(?:\.\d+)?)\s*</answer>', re.DOTALL)
+        # Regex pattern to extract area from the model's response (expects X.XX format)
+        self.area_extract_pattern = re.compile(r'<answer>\s*(\d+\.\d{2})\s*</answer>', re.DOTALL)
         
         # Regex pattern to check strict XML formatting
         # Requires <reasoning>...</reasoning> followed by <answer>X.XX</answer>
@@ -90,8 +89,8 @@ class SingleShapeEvaluator(RewardEvaluator):
             re.DOTALL
         )
         
-        # Pattern to check specifically for 2 decimal point format (X.XX)
-        self.decimal_format_pattern = re.compile(r'<answer>\s*\d+\.\d{2}\s*</answer>', re.DOTALL)
+        # Pattern to check specifically for 2 decimal point format (X.XX) within the answer tags
+        self.two_decimal_pattern = re.compile(r'<answer>\s*\d+\.\d{2}\s*</answer>', re.DOTALL)
         
     def _extract_area_string(self, response_text: str) -> Optional[str]:
         """
@@ -104,7 +103,7 @@ class SingleShapeEvaluator(RewardEvaluator):
             Extracted area string or None if not found
         """
         # Extract area value if present
-        area_match = self.area_pattern.search(response_text)
+        area_match = self.area_extract_pattern.search(response_text)
         if area_match:
             area_str = area_match.group(1)
             
@@ -127,7 +126,7 @@ class SingleShapeEvaluator(RewardEvaluator):
         Returns:
             List with 0.5 for correctly formatted responses, 0.0 otherwise
         """
-        return [0.5 if self.decimal_format_pattern.search(completion) else 0.0 for completion in completions]
+        return [0.5 if self.two_decimal_pattern.search(completion) else 0.0 for completion in completions]
 
     def _xml_format_reward(self, completions: List[str]) -> List[float]:
         """
@@ -258,14 +257,14 @@ class SingleShapeEvaluator(RewardEvaluator):
         if not reward_scores:
             return {
                 "area_correctness": 0.0,
-                "decimal_format": 0.0,
+                "area_format": 0.0,
                 "xml_format": 0.0,
                 "total_reward": 0.0
             }
         
         # Calculate averages across all examples
         area_correctness_scores = [scores[0] for scores in reward_scores]
-        decimal_format_scores = [scores[1] for scores in reward_scores]
+        area_format_scores = [scores[1] for scores in reward_scores]
         xml_format_scores = [scores[2] for scores in reward_scores]
         
         # Calculate total reward
@@ -273,7 +272,7 @@ class SingleShapeEvaluator(RewardEvaluator):
         
         return {
             "area_correctness": sum(area_correctness_scores) / len(area_correctness_scores),
-            "decimal_format": sum(decimal_format_scores) / len(decimal_format_scores), 
+            "area_format": sum(area_format_scores) / len(area_format_scores), 
             "xml_format": sum(xml_format_scores) / len(xml_format_scores),
             "total_reward": sum(total_rewards) / len(total_rewards)
         }

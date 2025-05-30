@@ -63,7 +63,7 @@ def generate_completions(model, tokenizer, image_path: str, prompt: str, num_com
     # Generate completions
     prompt_completion_ids = model.generate(
         **batched_inputs,
-        max_new_tokens=256,
+        max_new_tokens=512,
         do_sample=True,    
         temperature=temperature,
         pad_token_id=tokenizer.tokenizer.pad_token_id
@@ -145,7 +145,7 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
         metrics           
     ) = rollout(policy, tokenizer, evaluator, image_path, prompt, area, num_rollouts, args.temperature)
     
-    print(f"Completions text: {completions_text}")
+    # print(f"Completions text: {completions_text}")
 
     logits_to_keep = completion_tokens_mask.size(1)
     # Get per-token log probabilites of the completions for the policy model and reference model
@@ -154,58 +154,66 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
         reference_log_probs = sequence_log_probs(reference,  prompt_completion_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt)
 
     # print(f"\n--- GRPO Loss Debug ---")
-    # print(f"rewards_all: {rewards_all}")
-    # print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
+    print(f"rewards_all: {rewards_all}")
+    print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
     
-    # print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
-    # print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
+    print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
+    print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
     # # --- GRPO Loss Calculation ---
     ppo_clip_param = args.ppo_clip_param  # Epsilon for PPO clipping
     beta_kl = args.beta_kl       # Coefficient for KL penalty (Increased from 0.01)
 
-    # print(f"Mean valid completion tokens: {completion_tokens_mask.sum(dim=1).float().mean().item()}")
 
     kl_divergence_per_token = torch.exp(reference_log_probs - policy_log_probs) - (reference_log_probs - policy_log_probs) - 1
-    # print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
-    # print(f"kl_divergence_per_token mean: {kl_divergence_per_token.mean().item()}")
+    print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
+    print(f"kl_divergence_per_token mean: {kl_divergence_per_token.mean().item()}")
     
     # # Calculate the advantage 
     advantages_per_token = (rewards_all - rewards_all.mean()) / (rewards_all.std() + 1e-8)
     adv_expanded = advantages_per_token.unsqueeze(1) 
+
+    ### NEW
+    loss_per_token = torch.exp(reference_log_probs - reference_log_probs.detach()) * adv_expanded
+    loss_per_token = -(loss_per_token - beta_kl * kl_divergence_per_token) 
+    loss = ((loss_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1)).mean()
+    
+    print(f"loss: {loss.item()}")
+    return loss
+    ### OLD
     # print(f"advantages_per_token: {advantages_per_token}")
     # print(f"advantages_per_token mean: {advantages_per_token.mean().item()}, std: {advantages_per_token.std().item()}")
 
-    # # Policy ratio 
-    log_ratio = policy_log_probs - reference_log_probs 
-    ratio = torch.exp(log_ratio)
+    # # # Policy ratio 
+    # log_ratio = policy_log_probs - reference_log_probs 
+    # ratio = torch.exp(log_ratio)
     # print(f"log_ratio mean: {log_ratio.mean().item()}")
     # print(f"ratio mean: {ratio.mean().item()}, ratio max: {ratio.max().item()}, ratio min: {ratio.min().item()}")
 
-    # # PPO Clipped Surrogate Objective per token 
-    surr1 = ratio * adv_expanded
-    surr2 = torch.clamp(ratio, 1.0 - ppo_clip_param, 1.0 + ppo_clip_param) * adv_expanded
-    masked_L_clip = torch.min(surr1, surr2) * completion_tokens_mask
+    # # # PPO Clipped Surrogate Objective per token 
+    # surr1 = ratio * adv_expanded
+    # surr2 = torch.clamp(ratio, 1.0 - ppo_clip_param, 1.0 + ppo_clip_param) * adv_expanded
+    # masked_L_clip = torch.min(surr1, surr2) * completion_tokens_mask
     # print(f"surr1 mean: {surr1.mean().item()}")
     # print(f"surr2 mean: {surr2.mean().item()}")
     # print(f"masked_L_clip sum mean: {masked_L_clip.sum(dim=1).mean().item()}")
     
-    # # Policy Gradient Loss 
-    pg_loss = -masked_L_clip.sum(dim=1).mean()
+    # # # Policy Gradient Loss 
+    # pg_loss = -masked_L_clip.sum(dim=1).mean()
     # print(f"pg_loss: {pg_loss.item()}")
     
-    # # KL Loss 
-    # # Ensure kl_divergence is summed only over valid tokens using completion_tokens_mask
-    masked_kl_divergence = kl_divergence_per_token * completion_tokens_mask
-    mean_kl_div_sum_per_seq = masked_kl_divergence.sum(dim=1).mean()
-    kl_penalty = beta_kl * mean_kl_div_sum_per_seq
+    # # # KL Loss 
+    # # # Ensure kl_divergence is summed only over valid tokens using completion_tokens_mask
+    # masked_kl_divergence = kl_divergence_per_token * completion_tokens_mask
+    # mean_kl_div_sum_per_seq = masked_kl_divergence.sum(dim=1).mean()
+    # kl_penalty = beta_kl * mean_kl_div_sum_per_seq
     # print(f"mean_kl_div_sum_per_seq (masked): {mean_kl_div_sum_per_seq.item()}")
     # print(f"kl_penalty: {kl_penalty.item()}")
     
-    final_loss = pg_loss + kl_penalty
+    # final_loss = pg_loss + kl_penalty
     # print(f"Final loss (pg_loss + kl_penalty): {final_loss.item()}")
     # print(f"--- End GRPO Loss Debug ---\n")
 
-    return final_loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token
+    # return final_loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token 
 
 
 def parse_args():
@@ -282,8 +290,10 @@ if __name__ == "__main__":
         img_path, area = batch
 
         # GRPO loss
-        loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token = \
-            grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
+        # loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token = \
+        #     grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
+
+        loss = grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
 
         # # Backprop
         loss.backward()
@@ -296,5 +306,6 @@ if __name__ == "__main__":
         # print(f"Mean reward: {metrics['mean_reward']}")
         # print(f"Mean area correctness: {metrics['mean_area_correctness']}")
         # print(f"Mean area format: {metrics['mean_area_format']}")
+        # print(f"Mean XML format: {metrics['mean_xml_format']}")
         # print(f"Loss: {loss.item()}")
         
