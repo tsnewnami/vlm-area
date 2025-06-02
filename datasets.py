@@ -37,18 +37,19 @@ class DataLoader(ABC):
         """Restarts iteration from the beginning of the dataset."""
         pass
 
-# Prompt for the single shape area task
-SINGLE_AREA_PROMPT = f"""
-You will be shown an image a graph with a shape drawn on it. Your task is to determine the area of the shape.
+    
+SINGLE_AREA_PROMPT = """
+You will be shown an image of a graph with a shape drawn on it. Your task is to determine the area of the shape.
 
 You must answer in the following format:
 <reasoning>
-Reason about the shape geometrically. Use the axis labels and the visual grid lines to determine the shape's dimensions (e.g., radius, side lengths). Calculate the area using appropriate geometric formulas.
-If the shape is irregular or its precise dimensions are hard to determine, you can also estimate the area by carefully analyzing how the shape covers the grid squares.
+Briefly reason about the shape using axis labels or grid lines. Use a geometric formula to calculate the area in a few clear steps. If needed, estimate based on grid coverage.
+Keep your reasoning concise. Do not explain more than necessary.
 </reasoning>
 <answer>
 X.XX
 </answer>
+
 Replace X.XX with the area of the shape, rounded to 2 decimal places and only include numbers in your answer. Do not include any other text in your answer or any other text after </answer>.
 
 What is the area of the shape drawn on the plot?

@@ -79,10 +79,8 @@ def selective_log_softmax(logits, index):
     return per_token_logps
 
 def generate_completions(model, tokenizer, image_path: str, prompt: str, num_completions, temperature: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str], str, int, torch.Tensor]:
-    # System prompt and user prompt
     conversation = conversation_template(prompt, image_path)
 
-     
     text = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
     images, videos, video_kwarg = process_vision_info(conversation, return_video_kwargs=True)
     inputs = tokenizer(text=text, images=images, videos=videos, padding=True, return_tensors="pt", **video_kwarg).to(model.device).to(model.dtype)
@@ -146,7 +144,7 @@ def sequence_log_probs(model, input_ids, attention_mask, image_path, tokenizer, 
     
     logits = model(**batched_inputs).logits[:, :-1, :]           
 
-    input_ids = input_ids[: -logits_to_keep:]
+    input_ids = input_ids[:, -logits_to_keep:]
     logits = logits[:, -logits_to_keep:]
     return selective_log_softmax(logits, input_ids)
 
@@ -196,10 +194,14 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
             print("---")
         print("=====================================\n")
 
+    
+    print(f"Mean absolute error: {metrics['mean_abs_error']}")
+
     logits_to_keep = completion_tokens_mask.size(1)
+
     # Get per-token log probabilites of the completions for the policy model and reference model
     policy_log_probs = sequence_log_probs(policy, prompt_completion_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt)
-    with torch.inference_mode(): # Ensure no gradients for reference model operations
+    with torch.inference_mode():
         reference_log_probs = sequence_log_probs(reference,  prompt_completion_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt)
 
     # print(f"\n--- GRPO Loss Debug ---")
@@ -209,8 +211,8 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
     print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
     # # --- GRPO Loss Calculation ---
-    ppo_clip_param = args.ppo_clip_param  # Epsilon for PPO clipping
-    beta_kl = args.beta_kl       # Coefficient for KL penalty (Increased from 0.01)
+    ppo_clip_param = args.ppo_clip_param  
+    beta_kl = args.beta_kl     
 
 
     kl_divergence_per_token = torch.exp(reference_log_probs - policy_log_probs) - (reference_log_probs - policy_log_probs) - 1
@@ -222,11 +224,16 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     adv_expanded = advantages_per_token.unsqueeze(1) 
 
     ### NEW
-    loss_per_token = torch.exp(reference_log_probs - reference_log_probs.detach()) * adv_expanded
+    # Retain the gradients of reference model log probs
+    loss_per_token = torch.exp(policy_log_probs - policy_log_probs.detach()) * adv_expanded
     loss_per_token = -(loss_per_token - beta_kl * kl_divergence_per_token) 
     loss = ((loss_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1)).mean()
     
     print(f"loss: {loss.item()}")
+    # Calculate mean KL divergence across all batches
+    mean_kl = ((kl_divergence_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1).to(torch.float32)).mean()
+    print(f"mean_kl: {mean_kl.item()}")
+
     return loss
     ### OLD
     # print(f"advantages_per_token: {advantages_per_token}")
@@ -268,16 +275,16 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
 def parse_args():
     parser = argparse.ArgumentParser(description="VLM Area")
     parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=1e-6)
-    parser.add_argument("--num_rollouts", type=int, default=4)
+    parser.add_argument("--learning_rate", type=float, default=5e-6)
+    parser.add_argument("--num_rollouts", type=int, default=6)
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.999)
-    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--weight_decay", type=float, default=0.00)
     parser.add_argument("--num_train_iters", type=int, default=1000)
     parser.add_argument("--eval_iterations", type=int, default=100)
     parser.add_argument("--clip_grad_norm", type=float, default=0.5)
     parser.add_argument("--ppo_clip_param", type=float, default=0.2)
-    parser.add_argument("--beta_kl", type=float, default=0.5)
+    parser.add_argument("--beta_kl", type=float, default=0.05)
     parser.add_argument("--temperature", type=float, default=0.8)
     return parser.parse_args()
 
