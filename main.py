@@ -155,8 +155,9 @@ def rollout(policy, tokenizer, evaluator, image_path: str, prompt: str, area: fl
     
     # Compute rewards for the completions
     rewards_per_func, metrics = evaluator.compute_rewards(completions_text, area)
-    # Convert rewards to a tensor for easier manipulation
+    # Convert rewards to tensors for easier manipulation
     rewards_tensor = torch.tensor(rewards_per_func, device=policy.device, dtype=torch.float32)
+    rewards_per_func_tensor = torch.tensor(rewards_per_func, device=policy.device, dtype=torch.float32)
     
     # Compute the total reward for each completion by summing rewards from all functions
     rewards_all = rewards_tensor.sum(dim=1)
@@ -167,7 +168,7 @@ def rollout(policy, tokenizer, evaluator, image_path: str, prompt: str, area: fl
         scalar_prompt_length, 
         completion_tokens_mask, 
         rewards_all, 
-        rewards_per_func,
+        rewards_per_func_tensor,  # Return tensor instead of list
         completions_text, 
         metrics
     )
@@ -195,7 +196,7 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
         print("=====================================\n")
 
     
-    print(f"Mean absolute error: {metrics['mean_abs_error']}")
+    print(f"Mean relative error: {metrics['mean_rel_error']}")
 
     logits_to_keep = completion_tokens_mask.size(1)
 
@@ -220,15 +221,6 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     print(f"policy_log_probs (completions) mean: {mean_policy_completion_log_probs}, policy_log_probs[0] (completions) sum: {(masked_policy_log_probs[0]).sum().item()}")
     print(f"reference_log_probs (completions) mean: {mean_reference_completion_log_probs}, reference_log_probs[0] (completions) sum: {(masked_reference_log_probs[0]).sum().item()}")
 
-    # Log individual reward components for each completion
-    print("\n--- Individual Reward Components per Completion ---")
-    for i in range(rewards_per_func.size(0)): # rewards_per_func is now a tensor
-        print(f"Completion {i}:")
-        print(f"  Area Correctness: {rewards_per_func[i][0].item():.4f}")
-        print(f"  Area Format: {rewards_per_func[i][1].item():.4f}")
-        print(f"  XML Format: {rewards_per_func[i][2].item():.4f}")
-        print(f"  Total Reward: {rewards_all[i].item():.4f}")
-    print("--- End Individual Reward Components ---\n")
     
     # print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
     # print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
@@ -297,8 +289,8 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
 def parse_args():
     parser = argparse.ArgumentParser(description="VLM Area")
     parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=5e-6)
-    parser.add_argument("--num_rollouts", type=int, default=6)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.999)
     parser.add_argument("--weight_decay", type=float, default=0.00)
@@ -306,8 +298,8 @@ def parse_args():
     parser.add_argument("--eval_iterations", type=int, default=100)
     parser.add_argument("--clip_grad_norm", type=float, default=0.5)
     parser.add_argument("--ppo_clip_param", type=float, default=0.2)
-    parser.add_argument("--beta_kl", type=float, default=0.05)
-    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--beta_kl", type=float, default=0.1)
+    parser.add_argument("--temperature", type=float, default=0.7)
     return parser.parse_args()
 
 

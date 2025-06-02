@@ -1,13 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Optional
 import re
-import math  # Add math import for logarithmic scaling
 
-import torch
 
-# Maximum realistic area difference based on shape generation parameters
-# Largest shape is 80x80 square (6400), smallest is ~700, so maximum error around 6000
-MAX_DIFF = 6400  # Largest possible shape area
+
+
 
 
 class RewardEvaluator(ABC):
@@ -92,6 +89,9 @@ class SingleShapeEvaluator(RewardEvaluator):
         # Pattern to check specifically for 2 decimal point format (X.XX) within the answer tags
         self.two_decimal_pattern = re.compile(r'<answer>\s*\d+\.\d{2}\s*</answer>', re.DOTALL)
         
+        self.min_area = 32
+        self.max_area = 1225
+        
     def _extract_area_string(self, response_text: str) -> Optional[str]:
         """
         Extract area value from model response.
@@ -140,7 +140,7 @@ class SingleShapeEvaluator(RewardEvaluator):
         """
         return [0.5 if self.xml_format_pattern.search(completion) else 0.0 for completion in completions]
 
-    def _area_correctness_reward(self, completions: List[float | None], answer: Any) -> Tuple[List[float], List[float]]:
+    def _area_correctness_reward(self, completions: List[float | None], answer: Any) -> Tuple[List[float], List[float], List[float]]:
         """
         Award points for correctly calculating the area.
         
@@ -148,40 +148,34 @@ class SingleShapeEvaluator(RewardEvaluator):
             completions: List of extracted area values as floats or None
             answer: Ground truth area values
         Returns:
-            Tuple of (rewards list, absolute errors list)
+            Tuple of (rewards list, absolute errors list, relative errors list)
         """
         rewards = []
         abs_errors = []
-        max_reward = 2  # Changed
-        min_reward = 0  # Changed
+        rel_errors = []
+        max_reward = 3
+        min_reward = -3
 
         for completion in completions:
-            # Invalid prediction, assign min_reward
             if completion is None:
-                rewards.append(min_reward) 
-                abs_errors.append(MAX_DIFF)
+                rewards.append(min_reward)
+                abs_errors.append(self.max_area)
+                rel_errors.append(1.0)  # 100% error for missing/invalid
+                continue
             else:
                 diff = abs(completion - answer)
                 abs_errors.append(diff)
 
-                # Linear scaling
-                # Ensure diff doesn't exceed MAX_DIFF for calculation, though it shouldn't.
-                # Reward is max_reward if diff is 0, min_reward if diff is MAX_DIFF.
-                # reward = max_reward * (1 - (diff / MAX_DIFF))
-                # Clamp reward to be within [min_reward, max_reward]
-                # The formula naturally does this if 0 <= diff <= MAX_DIFF
+                denom = max(answer, self.min_area)
+                rel_error = diff / denom
+                rel_errors.append(rel_error)
                 
-                # Ensure diff is not greater than MAX_DIFF for the ratio calculation
-                # to prevent negative rewards if diff somehow exceeded MAX_DIFF.
-                normalized_diff = min(diff, MAX_DIFF) / MAX_DIFF
-                reward = max_reward * (1 - normalized_diff)
-                
-                # Explicitly clamp to handle any edge cases, though theoretically covered.
-                reward = max(min_reward, reward)
-
+                penalty = min(1.0, rel_error)
+                reward = (1 - penalty) * (max_reward - min_reward) + min_reward
+                reward = max(min_reward, min(max_reward, reward))
                 rewards.append(reward)
 
-        return (rewards, abs_errors)
+        return (rewards, abs_errors, rel_errors)
         
     def compute_rewards(
         self,
@@ -218,7 +212,7 @@ class SingleShapeEvaluator(RewardEvaluator):
         # Calculate rewards
         area_format_rewards = self._area_format_reward(completions)
         xml_format_rewards = self._xml_format_reward(completions)
-        area_correctness_rewards, abs_errors = self._area_correctness_reward(extracted_areas, answer)
+        area_correctness_rewards, abs_errors, rel_errors = self._area_correctness_reward(extracted_areas, answer)
         
         # Combine rewards into the list structure
         for i in range(num_completions):
@@ -233,13 +227,19 @@ class SingleShapeEvaluator(RewardEvaluator):
         mean_area_format = sum(area_format_rewards) / len(area_format_rewards) if area_format_rewards else 0.0
         mean_xml_format = sum(xml_format_rewards) / len(xml_format_rewards) if xml_format_rewards else 0.0
         
+        # Calculate mean and std of relative errors
+        mean_rel_error = sum(rel_errors) / len(rel_errors) if rel_errors else 0.0
+        std_rel_error = (sum((x - mean_rel_error) ** 2 for x in rel_errors) / len(rel_errors)) ** 0.5 if rel_errors else 0.0
+        
         # Return rewards and metrics
         metrics = {
             "mean_reward": mean_reward,
             "mean_area_correctness": mean_area_correctness,
             "mean_area_format": mean_area_format,
             "mean_xml_format": mean_xml_format,
-            "mean_abs_error": sum(abs_errors) / len(abs_errors) if abs_errors else 0.0
+            "mean_abs_error": sum(abs_errors) / len(abs_errors) if abs_errors else 0.0,
+            "mean_rel_error": mean_rel_error,
+            "std_rel_error": std_rel_error
         }
         
         return rewards_per_func, metrics
@@ -288,11 +288,6 @@ if __name__ == "__main__":
     
     # Compute rewards
     rewards, metrics = evaluator.compute_rewards(completions, answer)
-    
-    # Print results
-    print("Rewards structure:", [len(reward) for reward in rewards])
-    print("Rewards:", rewards)
-    print("Metrics:", metrics)
     
     # Test reward breakdown
     reward_breakdown = evaluator.get_reward_breakdown(rewards)

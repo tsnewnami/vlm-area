@@ -57,9 +57,8 @@ def generate_shape_plot(filename="shape.png"):
     min_coord = 0
     max_coord = grid_size  # Using new grid size
 
-    # Define shape size constraints - adjusted for 50x50 grid
-    min_shape_dim = 8   # Adjusted for 50x50 grid
-    max_shape_dim = 35  # Adjusted for 50x50 grid
+    min_shape_dim = 8   
+    max_shape_dim = 35 
 
     if chosen_shape == 'square':
         side = random.uniform(min_shape_dim, max_shape_dim)
