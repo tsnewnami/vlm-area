@@ -39,7 +39,21 @@ class DataLoader(ABC):
 
     
 SINGLE_AREA_PROMPT = """
-You will be shown an image of a graph with a shape drawn on it. Your task is to determine the area of the shape.
+You are a visual reasoning assistant. Your task is to calculate the area of a shape drawn on a 2D graph using only the information shown in the image.
+
+- Use the grid lines and axis ticks to determine shape dimensions.
+
+- Each square in the grid represents 1 unit × 1 unit.
+
+- The x-axis and y-axis define the coordinate system — treat the bottom-left as (0,0).
+
+- Do not estimate based on pixel size, shape color, or visual scale. Only use the axis values and grid lines.
+
+- Return the numerical value of the area in square units.
+
+- Avoid interpreting any units like centimeters, meters, or pixels. Use only the graph units defined by the grid.
+
+Example: If the shape is a rectangle and  spans from x = 20 to x = 40 and from y = 10 to y = 30, its width is 20 units, height is 20 units, and the area is 400.
 
 You must answer in the following format:
 <reasoning>

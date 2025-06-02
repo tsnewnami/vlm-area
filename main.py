@@ -208,8 +208,30 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     print(f"rewards_all: {rewards_all}")
     print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
     
-    print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
-    print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
+    # Detailed log probabilities for completions
+    masked_policy_log_probs = policy_log_probs * completion_tokens_mask
+    masked_reference_log_probs = reference_log_probs * completion_tokens_mask
+    
+    # Sum log_probs over actual completion tokens and divide by number of actual completion tokens
+    # to get mean log_prob per completion token, then average over the batch.
+    mean_policy_completion_log_probs = (masked_policy_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
+    mean_reference_completion_log_probs = (masked_reference_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
+
+    print(f"policy_log_probs (completions) mean: {mean_policy_completion_log_probs}, policy_log_probs[0] (completions) sum: {(masked_policy_log_probs[0]).sum().item()}")
+    print(f"reference_log_probs (completions) mean: {mean_reference_completion_log_probs}, reference_log_probs[0] (completions) sum: {(masked_reference_log_probs[0]).sum().item()}")
+
+    # Log individual reward components for each completion
+    print("\n--- Individual Reward Components per Completion ---")
+    for i in range(rewards_per_func.size(0)): # rewards_per_func is now a tensor
+        print(f"Completion {i}:")
+        print(f"  Area Correctness: {rewards_per_func[i][0].item():.4f}")
+        print(f"  Area Format: {rewards_per_func[i][1].item():.4f}")
+        print(f"  XML Format: {rewards_per_func[i][2].item():.4f}")
+        print(f"  Total Reward: {rewards_all[i].item():.4f}")
+    print("--- End Individual Reward Components ---\n")
+    
+    # print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
+    # print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
     # # --- GRPO Loss Calculation ---
     ppo_clip_param = args.ppo_clip_param  
     beta_kl = args.beta_kl     

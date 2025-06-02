@@ -6,8 +6,8 @@ import math  # Add math import for logarithmic scaling
 import torch
 
 # Maximum realistic area difference based on shape generation parameters
-# Largest shape is 150x150 square (22500), smallest is ~200.
-MAX_DIFF = 22500  # Max possible area of a 150x150 square
+# Largest shape is 80x80 square (6400), smallest is ~700, so maximum error around 6000
+MAX_DIFF = 6400  # Largest possible shape area
 
 
 class RewardEvaluator(ABC):
@@ -152,8 +152,8 @@ class SingleShapeEvaluator(RewardEvaluator):
         """
         rewards = []
         abs_errors = []
-        max_reward = 2  
-        min_reward = 0  
+        max_reward = 2  # Changed
+        min_reward = 0  # Changed
 
         for completion in completions:
             # Invalid prediction, assign min_reward
@@ -164,8 +164,19 @@ class SingleShapeEvaluator(RewardEvaluator):
                 diff = abs(completion - answer)
                 abs_errors.append(diff)
 
+                # Linear scaling
+                # Ensure diff doesn't exceed MAX_DIFF for calculation, though it shouldn't.
+                # Reward is max_reward if diff is 0, min_reward if diff is MAX_DIFF.
+                # reward = max_reward * (1 - (diff / MAX_DIFF))
+                # Clamp reward to be within [min_reward, max_reward]
+                # The formula naturally does this if 0 <= diff <= MAX_DIFF
+                
+                # Ensure diff is not greater than MAX_DIFF for the ratio calculation
+                # to prevent negative rewards if diff somehow exceeded MAX_DIFF.
                 normalized_diff = min(diff, MAX_DIFF) / MAX_DIFF
                 reward = max_reward * (1 - normalized_diff)
+                
+                # Explicitly clamp to handle any edge cases, though theoretically covered.
                 reward = max(min_reward, reward)
 
                 rewards.append(reward)

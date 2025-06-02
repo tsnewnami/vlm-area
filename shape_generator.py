@@ -8,7 +8,7 @@ import os
 def generate_shape_plot(filename="shape.png"):
     """
     Generates an image with a single randomly colored and sized shape (square, rectangle, circle, or triangle)
-    on a 200x200 grid. Saves the image and returns the image path and the area of the shape.
+    on a 50x50 grid. Saves the image and returns the image path and the area of the shape.
     Shapes are basic (e.g., no rotation for triangles).
 
     Args:
@@ -21,21 +21,29 @@ def generate_shape_plot(filename="shape.png"):
         
     # Image dimensions
     img_width, img_height = 224, 224
+    grid_size = 50  # New grid size
     dpi_val = 100
 
     fig, ax = plt.subplots(1, figsize=(img_width / dpi_val, img_height / dpi_val))
-    ax.set_xlim(0, img_width)
-    ax.set_ylim(0, img_height)
+    ax.set_xlim(0, grid_size)
+    ax.set_ylim(0, grid_size)
     ax.set_aspect('equal', adjustable='box')
 
-    # Grid
-    major_ticks = np.arange(0, img_width + 1, 20)
-    minor_ticks = np.arange(0, img_width + 1, 5)
+    # Grid - simplified and bolder
+    major_ticks = np.arange(0, grid_size + 1, 10)  # Every 10 units
+    minor_ticks = np.arange(0, grid_size + 1, 5)   # Every 5 units
+    
+    # Set up major grid lines
     ax.set_xticks(major_ticks)
     ax.set_yticks(major_ticks)
+    ax.grid(which='major', color='black', linestyle='-', linewidth=1.0, alpha=0.7)
+    
+    # Add minor ticks without grid lines
     ax.set_xticks(minor_ticks, minor=True)
     ax.set_yticks(minor_ticks, minor=True)
-    ax.grid(which='both', color='grey', linestyle='-', linewidth=0.5, alpha=0.5)
+    ax.tick_params(which='minor', length=4, color='black', width=1)
+    ax.tick_params(which='major', length=7, color='black', width=1.5)
+    
     ax.tick_params(axis='x', labelrotation=90)
     plt.style.use('seaborn-v0_8-whitegrid')
 
@@ -47,17 +55,17 @@ def generate_shape_plot(filename="shape.png"):
     area = 0
     
     min_coord = 0
-    max_coord = img_width # Assuming square canvas
+    max_coord = grid_size  # Using new grid size
 
-    # Define shape size constraints
-    min_shape_dim = 20  # Minimum dimension (side, diameter, base, height)
-    max_shape_dim = 150  # Maximum dimension
+    # Define shape size constraints - adjusted for 50x50 grid
+    min_shape_dim = 8   # Adjusted for 50x50 grid
+    max_shape_dim = 35  # Adjusted for 50x50 grid
 
     if chosen_shape == 'square':
         side = random.uniform(min_shape_dim, max_shape_dim)
         x = random.uniform(min_coord, max_coord - side)
         y = random.uniform(min_coord, max_coord - side)
-        square = patches.Rectangle((x, y), side, side, facecolor=color)
+        square = patches.Rectangle((x, y), side, side, facecolor=color, edgecolor='black', linewidth=2)
         ax.add_patch(square)
         area = side * side
 
@@ -70,7 +78,7 @@ def generate_shape_plot(filename="shape.png"):
 
         x = random.uniform(min_coord, max_coord - width)
         y = random.uniform(min_coord, max_coord - height)
-        rectangle = patches.Rectangle((x, y), width, height, facecolor=color)
+        rectangle = patches.Rectangle((x, y), width, height, facecolor=color, edgecolor='black', linewidth=2)
         ax.add_patch(rectangle)
         area = width * height
 
@@ -78,7 +86,7 @@ def generate_shape_plot(filename="shape.png"):
         radius = random.uniform(min_shape_dim / 2.0, max_shape_dim / 2.0)
         center_x = random.uniform(min_coord + radius, max_coord - radius)
         center_y = random.uniform(min_coord + radius, max_coord - radius)
-        circle_patch = patches.Circle((center_x, center_y), radius, facecolor=color)
+        circle_patch = patches.Circle((center_x, center_y), radius, facecolor=color, edgecolor='black', linewidth=2)
         ax.add_patch(circle_patch)
         area = math.pi * (radius ** 2)
 
@@ -94,7 +102,7 @@ def generate_shape_plot(filename="shape.png"):
         p3 = (x_start + base / 2.0, y_start + height)
         
         points = np.array([p1, p2, p3])
-        triangle_patch = patches.Polygon(points, closed=True, facecolor=color)
+        triangle_patch = patches.Polygon(points, closed=True, facecolor=color, edgecolor='black', linewidth=2)
         ax.add_patch(triangle_patch)
         area = 0.5 * base * height
 
