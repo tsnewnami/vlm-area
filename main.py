@@ -248,7 +248,7 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     mean_kl = ((kl_divergence_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1).to(torch.float32)).mean()
     print(f"mean_kl: {mean_kl.item()}")
 
-    return loss
+    return loss, metrics
     ### OLD
     # print(f"advantages_per_token: {advantages_per_token}")
     # print(f"advantages_per_token mean: {advantages_per_token.mean().item()}, std: {advantages_per_token.std().item()}")
@@ -363,7 +363,7 @@ if __name__ == "__main__":
         # loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token = \
         #     grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
 
-        loss = grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
+        loss, metrics = grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
 
         # # Backprop
         loss.backward()
@@ -371,11 +371,9 @@ if __name__ == "__main__":
         torch.nn.utils.clip_grad_norm_(policy.parameters(), args.clip_grad_norm)
         optimizer.step()
         optimizer.zero_grad()
-
-        # # Print metrics
-        # print(f"Mean reward: {metrics['mean_reward']}")
-        # print(f"Mean area correctness: {metrics['mean_area_correctness']}")
-        # print(f"Mean area format: {metrics['mean_area_format']}")
-        # print(f"Mean XML format: {metrics['mean_xml_format']}")
-        # print(f"Loss: {loss.item()}")
+        
+        # Log mean_rel_error to a file for plotting
+        with open('mean_rel_error.log', 'a') as f:
+            f.write(f"{metrics['mean_rel_error']}\n")
+        
         
