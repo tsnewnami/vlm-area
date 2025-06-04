@@ -6,6 +6,7 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 from datasets import SINGLE_AREA_PROMPT, SingleShapeAreaDataLoader
 from qwen_vl_utils import process_vision_info
 from tqdm import tqdm
+from torch.optim.lr_scheduler import LambdaLR
 
 from evaluator import SingleShapeEvaluator
 
@@ -303,10 +304,11 @@ def parse_args():
     parser.add_argument("--ppo_clip_param", type=float, default=0.2)
     parser.add_argument("--beta_kl", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.7)
-    parser.add_argument("--warmup_steps", type=int, default=10)
+    parser.add_argument("--warmup_steps", type=int, default=20)
     parser.add_argument("--max_new_tokens", type=int, default=1024)
     parser.add_argument("--update_ref_model_iter", type=int, default=200)
     parser.add_argument("--ref_model_mixup_alpha", type=float, default=0.1)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
     return parser.parse_args()
 
 
@@ -348,6 +350,12 @@ if __name__ == "__main__":
         eps=1e-8
     )
     
+    # Linear warmup scheduler
+    def lr_lambda(current_step):
+        if current_step < args.warmup_steps:
+            return float(current_step) / float(max(1, args.warmup_steps))
+        return 1.0
+    scheduler = LambdaLR(optimizer, lr_lambda)
 
     train_metrics = {}
     pdf_log_round_data = {}
@@ -356,10 +364,6 @@ if __name__ == "__main__":
     accumlated_loss = 0
     optimizer.zero_grad()
     for round in tqdm(range(start_round, args.num_train_iters), initial=start_round, total=args.num_train_iters, desc="Training Loop"):
-        # Run step periodically
-        # if round % args.eval_iterations == 0:
-        #    # Do eval on test set
-
         # Update the refernce model periodically:
         # https://github.com/willccbb/verifiers/tree/main?tab=readme-ov-file#grpo-rules-of-thumb
         if round > 0 and round % args.update_ref_model_iter == 0:
@@ -372,18 +376,18 @@ if __name__ == "__main__":
         batch = next(train_dataset)
         img_path, area = batch
 
-        # GRPO loss
-        # loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token = \
-        #     grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
-
         loss, metrics = grpo_loss(policy, reference, tokenizer, evaluator, img_path, train_dataset.prompt, area, args.num_rollouts, args)
 
-        # # Backprop
+        # Scale loss for gradient accumulation
+        loss = loss / args.gradient_accumulation_steps
         loss.backward()
         accumlated_loss += loss.item()
-        torch.nn.utils.clip_grad_norm_(policy.parameters(), args.max_grad_norm)
-        optimizer.step()
-        optimizer.zero_grad()
+
+        if (round + 1) % args.gradient_accumulation_steps == 0:
+            torch.nn.utils.clip_grad_norm_(policy.parameters(), args.max_grad_norm)
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
         
         # Log mean_rel_error to a file for plotting
         with open('mean_rel_error.log', 'a') as f:
