@@ -99,7 +99,7 @@ def generate_completions(model, tokenizer, image_path: str, prompt: str, num_com
     # Generate completions
     prompt_completion_ids = model.generate(
         **batched_inputs,
-        max_new_tokens=512,
+        max_new_tokens=args.max_new_tokens,
         do_sample=True,    
         temperature=temperature,
         pad_token_id=tokenizer.tokenizer.pad_token_id
@@ -197,6 +197,9 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
 
     
     print(f"Mean relative error: {metrics['mean_rel_error']}")
+    print(f"Mean XML format: {metrics['mean_xml_format']}")
+    print(f"Mean area format: {metrics['mean_area_format']}")
+    print(f"Mean area correctness: {metrics['mean_area_correctness']}")
 
     logits_to_keep = completion_tokens_mask.size(1)
 
@@ -289,17 +292,21 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
 def parse_args():
     parser = argparse.ArgumentParser(description="VLM Area")
     parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--learning_rate", type=float, default=1e-6)
     parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.999)
     parser.add_argument("--weight_decay", type=float, default=0.00)
     parser.add_argument("--num_train_iters", type=int, default=1000)
     parser.add_argument("--eval_iterations", type=int, default=100)
-    parser.add_argument("--clip_grad_norm", type=float, default=0.5)
+    parser.add_argument("--max_grad_norm", type=float, default=0.001)
     parser.add_argument("--ppo_clip_param", type=float, default=0.2)
     parser.add_argument("--beta_kl", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--warmup_steps", type=int, default=10)
+    parser.add_argument("--max_new_tokens", type=int, default=1024)
+    parser.add_argument("--update_ref_model_iter", type=int, default=200)
+    parser.add_argument("--ref_model_mixup_alpha", type=float, default=0.1)
     return parser.parse_args()
 
 
@@ -353,7 +360,13 @@ if __name__ == "__main__":
         # if round % args.eval_iterations == 0:
         #    # Do eval on test set
 
-        # Reference model update why?
+        # Update the refernce model periodically:
+        # https://github.com/willccbb/verifiers/tree/main?tab=readme-ov-file#grpo-rules-of-thumb
+        if round > 0 and round % args.update_ref_model_iter == 0:
+            with torch.no_grad():
+                for param, ref_param in zip(policy.parameters(), reference.parameters()):
+                    ref_param.data = args.ref_model_mixup_alpha * param.data + (1 - args.ref_model_mixup_alpha) * ref_param.data
+            reference.eval()
 
         # Training step
         batch = next(train_dataset)
@@ -368,7 +381,7 @@ if __name__ == "__main__":
         # # Backprop
         loss.backward()
         accumlated_loss += loss.item()
-        torch.nn.utils.clip_grad_norm_(policy.parameters(), args.clip_grad_norm)
+        torch.nn.utils.clip_grad_norm_(policy.parameters(), args.max_grad_norm)
         optimizer.step()
         optimizer.zero_grad()
         
