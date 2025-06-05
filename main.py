@@ -259,7 +259,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="VLM Area")
     parser.add_argument("--num_samples", type=int, default=10000)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
-    parser.add_argument("--num_rollouts", type=int, default=10)
+    parser.add_argument("--num_rollouts", type=int, default=8)
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.999)
     parser.add_argument("--weight_decay", type=float, default=0.00)

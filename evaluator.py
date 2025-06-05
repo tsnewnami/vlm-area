@@ -1,11 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Optional
 import re
-
-
-
-
-
+import numpy as np
 
 class RewardEvaluator(ABC):
     """
@@ -142,8 +138,7 @@ class SingleShapeEvaluator(RewardEvaluator):
 
     def _area_correctness_reward(self, completions: List[float | None], answer: Any) -> Tuple[List[float], List[float], List[float]]:
         """
-        Award points for correctly calculating the area.
-        
+        Award points for correctly calculating the area using a nonlinear (exponential decay) reward function.
         Args:
             completions: List of extracted area values as floats or None
             answer: Ground truth area values
@@ -155,6 +150,8 @@ class SingleShapeEvaluator(RewardEvaluator):
         rel_errors = []
         max_reward = 3
         min_reward = -3
+        alpha = 5  # Controls sharpness of reward drop-off
+        bonus = 0.5  # Bonus for very low error
 
         for completion in completions:
             if completion is None:
@@ -168,9 +165,12 @@ class SingleShapeEvaluator(RewardEvaluator):
                 denom = max(answer, self.min_area)
                 rel_error = diff / denom
                 rel_errors.append(rel_error)
-                
-                penalty = min(1.0, rel_error)
-                reward = (1 - penalty) * (max_reward - min_reward) + min_reward
+
+                # Exponential decay reward
+                reward = max_reward * np.exp(-alpha * rel_error)
+                # Add a small bonus for very low error
+                if rel_error < 0.01:
+                    reward += bonus
                 reward = max(min_reward, min(max_reward, reward))
                 rewards.append(reward)
 
