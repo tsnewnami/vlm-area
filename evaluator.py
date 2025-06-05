@@ -165,14 +165,12 @@ class SingleShapeEvaluator(RewardEvaluator):
                 denom = max(answer, self.min_area)
                 rel_error = diff / denom
                 rel_errors.append(rel_error)
-
-                # Exponential decay reward
-                reward = max_reward * np.exp(-alpha * rel_error)
-                # Add a small bonus for very low error
-                if rel_error < 0.01:
-                    reward += bonus
+                
+                penalty = min(1.0, rel_error)
+                reward = (1 - penalty) * (max_reward - min_reward) + min_reward
                 reward = max(min_reward, min(max_reward, reward))
                 rewards.append(reward)
+
 
         return (rewards, abs_errors, rel_errors)
         
