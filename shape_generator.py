@@ -58,7 +58,7 @@ def generate_shape_plot(filename="shape.png"):
     min_coord = 0
     max_coord = grid_size  # Using new grid size
 
-    min_shape_dim = 8   
+    min_shape_dim = 20 
     max_shape_dim = 35 
 
     if chosen_shape == 'square':
