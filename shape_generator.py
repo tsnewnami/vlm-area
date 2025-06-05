@@ -4,6 +4,7 @@ import numpy as np
 import random
 import math
 import os
+from matplotlib.transforms import Affine2D
 
 def generate_shape_plot(filename="shape.png"):
     """
@@ -62,22 +63,34 @@ def generate_shape_plot(filename="shape.png"):
 
     if chosen_shape == 'square':
         side = random.uniform(min_shape_dim, max_shape_dim)
-        x = random.uniform(min_coord, max_coord - side)
-        y = random.uniform(min_coord, max_coord - side)
+        # Compute half-diagonal
+        half_diag = (side * math.sqrt(2)) / 2
+        center_x = random.uniform(min_coord + half_diag, max_coord - half_diag)
+        center_y = random.uniform(min_coord + half_diag, max_coord - half_diag)
+        x = center_x - side / 2
+        y = center_y - side / 2
+        angle = random.uniform(0, 360)
         square = patches.Rectangle((x, y), side, side, facecolor=color, edgecolor='black', linewidth=2)
+        t = Affine2D().rotate_deg_around(center_x, center_y, angle) + ax.transData
+        square.set_transform(t)
         ax.add_patch(square)
         area = side * side
 
     elif chosen_shape == 'rectangle':
         width = random.uniform(min_shape_dim, max_shape_dim)
         height = random.uniform(min_shape_dim, max_shape_dim)
-        # Ensure width and height are different enough for a rectangle, not a square
-        while abs(width - height) < min_shape_dim / 4: # Avoid near-squares, ensure some difference
+        while abs(width - height) < min_shape_dim / 4:
             height = random.uniform(min_shape_dim, max_shape_dim)
-
-        x = random.uniform(min_coord, max_coord - width)
-        y = random.uniform(min_coord, max_coord - height)
+        # Compute half-diagonal
+        half_diag = (math.sqrt(width ** 2 + height ** 2)) / 2
+        center_x = random.uniform(min_coord + half_diag, max_coord - half_diag)
+        center_y = random.uniform(min_coord + half_diag, max_coord - half_diag)
+        x = center_x - width / 2
+        y = center_y - height / 2
+        angle = random.uniform(0, 360)
         rectangle = patches.Rectangle((x, y), width, height, facecolor=color, edgecolor='black', linewidth=2)
+        t = Affine2D().rotate_deg_around(center_x, center_y, angle) + ax.transData
+        rectangle.set_transform(t)
         ax.add_patch(rectangle)
         area = width * height
 
@@ -92,16 +105,23 @@ def generate_shape_plot(filename="shape.png"):
     elif chosen_shape == 'triangle':
         base = random.uniform(min_shape_dim, max_shape_dim)
         height = random.uniform(min_shape_dim, max_shape_dim)
-        
-        x_start = random.uniform(min_coord, max_coord - base)
-        y_start = random.uniform(min_coord, max_coord - height)
-        
-        p1 = (x_start, y_start)
-        p2 = (x_start + base, y_start)
-        p3 = (x_start + base / 2.0, y_start + height)
-        
+        # Initial triangle points (centered at origin for easier rotation and placement)
+        p1 = np.array([-base / 2, -height / 3])
+        p2 = np.array([base / 2, -height / 3])
+        p3 = np.array([0, 2 * height / 3])
         points = np.array([p1, p2, p3])
-        triangle_patch = patches.Polygon(points, closed=True, facecolor=color, edgecolor='black', linewidth=2)
+        # Centroid is at (0,0) by construction
+        max_dist = np.linalg.norm(points, axis=1).max()
+        centroid_x = random.uniform(min_coord + max_dist, max_coord - max_dist)
+        centroid_y = random.uniform(min_coord + max_dist, max_coord - max_dist)
+        angle = random.uniform(0, 360)
+        theta = np.deg2rad(angle)
+        rot_matrix = np.array([
+            [np.cos(theta), -np.sin(theta)],
+            [np.sin(theta),  np.cos(theta)]
+        ])
+        rotated_points = (points @ rot_matrix.T) + np.array([centroid_x, centroid_y])
+        triangle_patch = patches.Polygon(rotated_points, closed=True, facecolor=color, edgecolor='black', linewidth=2)
         ax.add_patch(triangle_patch)
         area = 0.5 * base * height
 

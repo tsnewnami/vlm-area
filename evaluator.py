@@ -161,7 +161,6 @@ class SingleShapeEvaluator(RewardEvaluator):
                 rewards.append(min_reward)
                 abs_errors.append(self.max_area)
                 rel_errors.append(1.0)  # 100% error for missing/invalid
-                continue
             else:
                 diff = abs(completion - answer)
                 abs_errors.append(diff)

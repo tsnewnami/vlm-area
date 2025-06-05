@@ -253,54 +253,19 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     print(f"mean_kl: {mean_kl.item()}")
 
     return loss, metrics
-    ### OLD
-    # print(f"advantages_per_token: {advantages_per_token}")
-    # print(f"advantages_per_token mean: {advantages_per_token.mean().item()}, std: {advantages_per_token.std().item()}")
-
-    # # # Policy ratio 
-    # log_ratio = policy_log_probs - reference_log_probs 
-    # ratio = torch.exp(log_ratio)
-    # print(f"log_ratio mean: {log_ratio.mean().item()}")
-    # print(f"ratio mean: {ratio.mean().item()}, ratio max: {ratio.max().item()}, ratio min: {ratio.min().item()}")
-
-    # # # PPO Clipped Surrogate Objective per token 
-    # surr1 = ratio * adv_expanded
-    # surr2 = torch.clamp(ratio, 1.0 - ppo_clip_param, 1.0 + ppo_clip_param) * adv_expanded
-    # masked_L_clip = torch.min(surr1, surr2) * completion_tokens_mask
-    # print(f"surr1 mean: {surr1.mean().item()}")
-    # print(f"surr2 mean: {surr2.mean().item()}")
-    # print(f"masked_L_clip sum mean: {masked_L_clip.sum(dim=1).mean().item()}")
-    
-    # # # Policy Gradient Loss 
-    # pg_loss = -masked_L_clip.sum(dim=1).mean()
-    # print(f"pg_loss: {pg_loss.item()}")
-    
-    # # # KL Loss 
-    # # # Ensure kl_divergence is summed only over valid tokens using completion_tokens_mask
-    # masked_kl_divergence = kl_divergence_per_token * completion_tokens_mask
-    # mean_kl_div_sum_per_seq = masked_kl_divergence.sum(dim=1).mean()
-    # kl_penalty = beta_kl * mean_kl_div_sum_per_seq
-    # print(f"mean_kl_div_sum_per_seq (masked): {mean_kl_div_sum_per_seq.item()}")
-    # print(f"kl_penalty: {kl_penalty.item()}")
-    
-    # final_loss = pg_loss + kl_penalty
-    # print(f"Final loss (pg_loss + kl_penalty): {final_loss.item()}")
-    # print(f"--- End GRPO Loss Debug ---\n")
-
-    # return final_loss, completions_text, rewards_all, rewards_per_func, metrics, advantages_per_token 
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="VLM Area")
     parser.add_argument("--num_samples", type=int, default=10000)
-    parser.add_argument("--learning_rate", type=float, default=1e-6)
-    parser.add_argument("--num_rollouts", type=int, default=8)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--num_rollouts", type=int, default=10)
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.999)
-    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--weight_decay", type=float, default=0.00)
     parser.add_argument("--num_train_iters", type=int, default=3000)
     parser.add_argument("--eval_iterations", type=int, default=100)
-    parser.add_argument("--max_grad_norm", type=float, default=0.001)
+    parser.add_argument("--max_grad_norm", type=float, default=0.5)
     parser.add_argument("--ppo_clip_param", type=float, default=0.2)
     parser.add_argument("--beta_kl", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -390,7 +355,10 @@ if __name__ == "__main__":
             optimizer.zero_grad()
         
         # Log mean_rel_error to a file for plotting
-        with open('mean_rel_error.log', 'a') as f:
-            f.write(f"{metrics['mean_rel_error']}\n")
+        with open('rewards.log', 'a') as f:
+            f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
+            f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
+            f.write(f"Mean area format: {metrics['mean_area_format']}\n")
+            f.write(f"Mean area correctness: {metrics['mean_area_correctness']}\n")
         
         
