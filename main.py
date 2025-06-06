@@ -11,6 +11,17 @@ from torch.optim.lr_scheduler import LambdaLR
 from evaluator import SingleShapeEvaluator
 
 def load_model(device: str):
+    """
+    Load the Qwen2.5-VL-7B-Instruct model and processor for image-text tasks.
+
+    Args:
+        device (str): Device to load the model onto (e.g., 'cuda', 'cpu').
+
+    Returns:
+        tuple: (model, processor)
+            model: AutoModelForImageTextToText instance.
+            processor: AutoProcessor instance with tokenizer and padding configured.
+    """
     model_name = "Qwen/Qwen2.5-VL-7B-Instruct"
     processor = AutoProcessor.from_pretrained(model_name)
     model = AutoModelForImageTextToText.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map=device)
@@ -26,6 +37,16 @@ def load_model(device: str):
     return model, processor
 
 def conversation_template(prompt: str, image_path: str):
+    """
+    Create a conversation template for the Qwen model with an image and prompt.
+
+    Args:
+        prompt (str): The user prompt or question.
+        image_path (str): Path to the image file to include in the conversation.
+
+    Returns:
+        list: Conversation formatted as a list of message dicts for the model.
+    """
     return [
         {
             "role": "system",
@@ -40,11 +61,8 @@ def conversation_template(prompt: str, image_path: str):
         },
     ] 
 
-####################################################################################
-## Copied Directly from TRL -> generate log probs per token                 ########
-## https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py ########
-####################################################################################
-
+# Implementation from:
+# https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py 
 def selective_log_softmax(logits, index):
     """
     A memory-efficient implementation of the common `log_softmax -> gather` operation.
@@ -79,7 +97,30 @@ def selective_log_softmax(logits, index):
         per_token_logps = torch.stack(per_token_logps)
     return per_token_logps
 
-def generate_completions(model, tokenizer, image_path: str, prompt: str, num_completions, temperature: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str], str, int, torch.Tensor]:
+def generate_completions(model, tokenizer, image_path: str, prompt: str, num_completions, temperature: float, max_new_tokens: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[str], str, int, torch.Tensor]:
+    """
+    Generate multiple completions from the model for a given image and prompt.
+
+    Args:
+        model: The model to use for generation.
+        tokenizer: The tokenizer/processor for the model.
+        image_path (str): Path to the input image.
+        prompt (str): The user prompt or question.
+        num_completions (int): Number of completions to generate.
+        temperature (float): Sampling temperature for generation.
+        max_new_tokens (int): Maximum number of new tokens to generate per completion.
+
+    Returns:
+        tuple:
+            - prompt_completion_ids (torch.Tensor): Generated token IDs (prompt + completion).
+            - prompt_ids (torch.Tensor): Token IDs for the prompt.
+            - completion_ids (torch.Tensor): Token IDs for the generated completions.
+            - attention_mask_full (torch.Tensor): Attention mask for prompt + completion.
+            - completions_text (list[str]): Decoded completion strings.
+            - prompt (str): The original prompt string.
+            - prompt_length (int): Length of the prompt in tokens.
+            - completion_tokens_mask (torch.Tensor): Mask for valid completion tokens.
+    """
     conversation = conversation_template(prompt, image_path)
 
     text = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
@@ -100,7 +141,7 @@ def generate_completions(model, tokenizer, image_path: str, prompt: str, num_com
     # Generate completions
     prompt_completion_ids = model.generate(
         **batched_inputs,
-        max_new_tokens=args.max_new_tokens,
+        max_new_tokens=max_new_tokens,
         do_sample=True,    
         temperature=temperature,
         pad_token_id=tokenizer.tokenizer.pad_token_id
@@ -127,6 +168,22 @@ def generate_completions(model, tokenizer, image_path: str, prompt: str, num_com
     return prompt_completion_ids, prompt_ids, completion_ids, attention_mask_full, completions_text, prompt, prompt_length, completion_tokens_mask
 
 def sequence_log_probs(model, input_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt):
+    """
+    Compute per-token log probabilities for a sequence given a model and input.
+
+    Args:
+        model: The model to use for computing log probabilities.
+        input_ids (torch.Tensor): Input token IDs (batch, seq_len).
+        attention_mask (torch.Tensor): Attention mask for the input (batch, seq_len).
+        image_path (str): Path to the input image.
+        tokenizer: The tokenizer/processor for the model.
+        logits_to_keep (int): Number of logits/tokens to keep from the end of the sequence.
+        prompt (str): The user prompt or question.
+
+    Returns:
+        torch.Tensor: Log probabilities for each token in the sequence (batch, seq_len_kept).
+    """
+    # This process is repeated as per `generate_completions`. This is needed to include the pixels of the image in the input context.
     conversation = conversation_template(prompt, image_path)
     
     text = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False, padding_side="left")
@@ -151,8 +208,32 @@ def sequence_log_probs(model, input_ids, attention_mask, image_path, tokenizer, 
 
 
 def rollout(policy, tokenizer, evaluator, image_path: str, prompt: str, area: float, num_rollouts, temperature: float):
+    """
+    Generate multiple completions and compute rewards for a given image, prompt, and target area.
+
+    Args:
+        policy: The policy model used for generation.
+        tokenizer: The tokenizer/processor for the model.
+        evaluator: Evaluator object to compute rewards and metrics.
+        image_path (str): Path to the input image.
+        prompt (str): The user prompt or question.
+        area (float): Ground truth area value for reward computation.
+        num_rollouts (int): Number of completions to generate.
+        temperature (float): Sampling temperature for generation.
+
+    Returns:
+        tuple:
+            - prompt_completion_ids (torch.Tensor): Generated token IDs (prompt + completion).
+            - attention_mask (torch.Tensor): Attention mask for prompt + completion.
+            - scalar_prompt_length (int): Length of the prompt in tokens.
+            - completion_tokens_mask (torch.Tensor): Mask for valid completion tokens.
+            - rewards_all (torch.Tensor): Total reward for each completion.
+            - rewards_per_func_tensor (torch.Tensor): Per-function rewards for each completion.
+            - completions_text (list[str]): Decoded completion strings.
+            - metrics (dict): Aggregated reward metrics.
+    """
     prompt_completion_ids, _, _, attention_mask, completions_text, _, scalar_prompt_length, completion_tokens_mask = \
-        generate_completions(policy, tokenizer, image_path, prompt, num_rollouts, temperature)
+        generate_completions(policy, tokenizer, image_path, prompt, num_rollouts, temperature, args.max_new_tokens)
     
     # Compute rewards for the completions
     rewards_per_func, metrics = evaluator.compute_rewards(completions_text, area)
@@ -175,6 +256,25 @@ def rollout(policy, tokenizer, evaluator, image_path: str, prompt: str, area: fl
     )
 
 def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: str, area: float, num_rollouts, args):
+    """
+    Compute the GRPO (Generalized Reward Policy Optimization) loss for a batch of completions.
+
+    Args:
+        policy: The policy model being optimized.
+        reference: The reference model for KL regularization.
+        tokenizer: The tokenizer/processor for the model.
+        evaluator: Evaluator object to compute rewards and metrics.
+        image_path (str): Path to the input image.
+        prompt (str): The user prompt or question.
+        area (float): Ground truth area value for reward computation.
+        num_rollouts (int): Number of completions to generate per batch.
+        args: Namespace of hyperparameters (must include beta_kl, temperature, etc.).
+
+    Returns:
+        tuple:
+            - loss (torch.Tensor): The computed GRPO loss (scalar).
+            - metrics (dict): Aggregated reward and evaluation metrics for the batch.
+    """
     (
         prompt_completion_ids, 
         attention_mask, 
@@ -196,7 +296,6 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
             print("---")
         print("=====================================\n")
 
-    
     print(f"Mean relative error: {metrics['mean_rel_error']}")
     print(f"Mean XML format: {metrics['mean_xml_format']}")
     print(f"Mean area format: {metrics['mean_area_format']}")
@@ -209,7 +308,6 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     with torch.inference_mode():
         reference_log_probs = sequence_log_probs(reference,  prompt_completion_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt)
 
-    # print(f"\n--- GRPO Loss Debug ---")
     print(f"rewards_all: {rewards_all}")
     print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
     
@@ -217,21 +315,13 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     masked_policy_log_probs = policy_log_probs * completion_tokens_mask
     masked_reference_log_probs = reference_log_probs * completion_tokens_mask
     
-    # Sum log_probs over actual completion tokens and divide by number of actual completion tokens
-    # to get mean log_prob per completion token, then average over the batch.
     mean_policy_completion_log_probs = (masked_policy_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
     mean_reference_completion_log_probs = (masked_reference_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
 
     print(f"policy_log_probs (completions) mean: {mean_policy_completion_log_probs}, policy_log_probs[0] (completions) sum: {(masked_policy_log_probs[0]).sum().item()}")
     print(f"reference_log_probs (completions) mean: {mean_reference_completion_log_probs}, reference_log_probs[0] (completions) sum: {(masked_reference_log_probs[0]).sum().item()}")
 
-    
-    # print(f"policy_log_probs mean: {policy_log_probs.mean().item()}, policy_log_probs[0] sum: {policy_log_probs[0].sum().item()}")
-    # print(f"reference_log_probs mean: {reference_log_probs.mean().item()}, reference_log_probs[0] sum: {reference_log_probs[0].sum().item()}")
-    # # --- GRPO Loss Calculation ---
-    ppo_clip_param = args.ppo_clip_param  
     beta_kl = args.beta_kl     
-
 
     kl_divergence_per_token = torch.exp(reference_log_probs - policy_log_probs) - (reference_log_probs - policy_log_probs) - 1
     print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
@@ -241,8 +331,7 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     advantages_per_token = (rewards_all - rewards_all.mean()) / (rewards_all.std() + 1e-8)
     adv_expanded = advantages_per_token.unsqueeze(1) 
 
-    ### NEW
-    # Retain the gradients of reference model log probs
+    # Only keep the gradients of the policy, and scale them by the advantage
     loss_per_token = torch.exp(policy_log_probs - policy_log_probs.detach()) * adv_expanded
     loss_per_token = -(loss_per_token - beta_kl * kl_divergence_per_token) 
     loss = ((loss_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1)).mean()
@@ -266,7 +355,6 @@ def parse_args():
     parser.add_argument("--num_train_iters", type=int, default=3000)
     parser.add_argument("--eval_iterations", type=int, default=100)
     parser.add_argument("--max_grad_norm", type=float, default=0.5)
-    parser.add_argument("--ppo_clip_param", type=float, default=0.2)
     parser.add_argument("--beta_kl", type=float, default=0.05)
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--warmup_steps", type=int, default=20)
@@ -290,14 +378,6 @@ if __name__ == "__main__":
     reference, _ = load_model(device)
     reference.eval() 
     
-    
-    
-    # # TODO:
-    # # Initialise 
-    # # - output dir
-    # # - checkpoint dir
-    # # - eval dir (logs, pdf, json)
-    # # - train dir (logs, pdf, json)
     
     # Create datasets
     train_dataset = SingleShapeAreaDataLoader(dataset_size=args.num_samples, is_train=True)
