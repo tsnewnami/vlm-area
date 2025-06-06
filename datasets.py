@@ -100,43 +100,19 @@ class SingleShapeAreaDataLoader(DataLoader):
         self.current_index = 0 
 
 if __name__ == "__main__":
-    # Single Shape Area dataset test
-    try:
-        print("\n" + "="*50)
-        print("== SINGLE SHAPE AREA DATASET TEST ==".center(50))
-        print("="*50 + "\n")
-        
-        # Testing training dataset
-        print("-"*50)
-        print("TRAINING DATASET CONFIGURATION:")
-        print("-"*50)
-        train_loader = SingleShapeAreaDataLoader(dataset_size=10, is_train=True)
-        print(f"• Dataset Size: {len(train_loader)} examples")
-        
-        # Generate and display sample from training dataset
-        print("\nGENERATING SAMPLE FROM TRAINING DATASET:")
-        filepath, area = next(train_loader)
-        print(f"• Generated Image: {filepath}")
-        print(f"• Shape Area: {area} square pixels")
-        
-        # Testing test dataset
-        print("\n" + "-"*50)
-        print("TEST DATASET CONFIGURATION:")
-        print("-"*50)
-        test_loader = SingleShapeAreaDataLoader(dataset_size=10, is_train=False)
-        
-        # Generate and display sample from test dataset
-        print("\nGENERATING SAMPLE FROM TEST DATASET:")
-        filepath, area = next(test_loader)
-        print(f"• Generated Image: {filepath}")
-        print(f"• Shape Area: {area} square pixels")
-        
-        # Display system prompt used for the task
-        print("\n" + "-"*50)
-        print("SYSTEM PROMPT:")
-        print("-"*50)
-        print(f"{train_loader.prompt.strip()}")
-        print("\n" + "="*50)
-        
-    except Exception as e:
-        print(f"\n❌ ERROR: Failed to load single shape area dataset: {e}")
+    train_loader = SingleShapeAreaDataLoader(dataset_size=10, is_train=True)
+    print(f"• Dataset Size: {len(train_loader)} examples")
+    
+    print("\nGENERATING SAMPLE FROM TRAINING DATASET:")
+    filepath, area = next(train_loader)
+    print(f"• Generated Image: {filepath}")
+    print(f"• Shape Area: {area} square pixels")
+    
+    test_loader = SingleShapeAreaDataLoader(dataset_size=10, is_train=False)
+    
+    filepath, area = next(test_loader)
+    print(f"• Generated Image: {filepath}")
+    print(f"• Shape Area: {area} square pixels")
+    
+    print("SYSTEM PROMPT:")
+    print(f"{train_loader.prompt.strip()}")

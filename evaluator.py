@@ -138,20 +138,23 @@ class SingleShapeEvaluator(RewardEvaluator):
 
     def _area_correctness_reward(self, completions: List[float | None], answer: Any) -> Tuple[List[float], List[float], List[float]]:
         """
-        Award points for correctly calculating the area using a nonlinear (exponential decay) reward function.
+        Compute area correctness rewards and error metrics for a batch of completions.
+
         Args:
-            completions: List of extracted area values as floats or None
-            answer: Ground truth area values
+            completions (List[float | None]): List of predicted area values (floats or None for invalid/missing).
+            answer (Any): Ground truth area value.
+
         Returns:
-            Tuple of (rewards list, absolute errors list, relative errors list)
+            Tuple[List[float], List[float], List[float]]:
+                - rewards: List of area correctness rewards for each completion.
+                - abs_errors: List of absolute errors for each completion.
+                - rel_errors: List of relative errors for each completion.
         """
         rewards = []
         abs_errors = []
         rel_errors = []
         max_reward = 3
         min_reward = -3
-        alpha = 5  # Controls sharpness of reward drop-off
-        bonus = 0.5  # Bonus for very low error
 
         for completion in completions:
             if completion is None:
@@ -166,6 +169,7 @@ class SingleShapeEvaluator(RewardEvaluator):
                 rel_error = diff / denom
                 rel_errors.append(rel_error)
                 
+                # Scale rewards linearly
                 penalty = min(1.0, rel_error)
                 reward = (1 - penalty) * (max_reward - min_reward) + min_reward
                 reward = max(min_reward, min(max_reward, reward))
@@ -275,18 +279,14 @@ class SingleShapeEvaluator(RewardEvaluator):
         }
 
 if __name__ == "__main__":
-    
-    # Create an instance of the evaluator
     evaluator = SingleShapeEvaluator()
     
     # Example outputs
-    completions = ['<reasoning>\nThe shape appears to be a right triangle with its base lying on the horizontal axis and its height along the vertical axis. To find the area of this triangle, we can use the formula for the area of a triangle: \\( \\text{Area} = \\frac{1}{2} \\times \\text{base} \\times \\text{height} \\).\n\nFrom the graph, the base of the triangle is 20 units (from 150 to 170 on the x-axis), and the height is 40 units (from 0 to 40 on the y-axis). Plugging these values into the formula gives:\n\n\\[ \\text{Area} = \\frac{1}{2} \\times 20 \\times 40 = 400 \\]\n\n</reasoning>\n<answer>\n400.00\n</answer>'] 
-    answer = 500   # Ground truth area
+    completions = ['<reasoning>\n......\n</reasoning>\n<answer>\n400.00\n</answer>'] 
+    answer = 500   
     
-    # Compute rewards
     rewards, metrics = evaluator.compute_rewards(completions, answer)
     
-    # Test reward breakdown
     reward_breakdown = evaluator.get_reward_breakdown(rewards)
     print("\nReward breakdown:")
     for key, value in reward_breakdown.items():

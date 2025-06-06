@@ -4,7 +4,6 @@ import numpy as np
 import random
 import math
 import os
-from matplotlib.transforms import Affine2D
 
 def generate_shape_plot(filename="shape.png"):
     """
