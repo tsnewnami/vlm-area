@@ -362,6 +362,7 @@ def parse_args():
     parser.add_argument("--update_ref_model_iter", type=int, default=200)
     parser.add_argument("--ref_model_mixup_alpha", type=float, default=0.1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
+    parser.add_argument("--rotate", type=bool, default=False, help="Enable random rotation of shapes generated")
     return parser.parse_args()
 
 
@@ -380,8 +381,8 @@ if __name__ == "__main__":
     
     
     # Create datasets
-    train_dataset = SingleShapeAreaDataLoader(dataset_size=args.num_samples, is_train=True)
-    test_dataset = SingleShapeAreaDataLoader(dataset_size=args.num_samples, is_train=False)
+    train_dataset = SingleShapeAreaDataLoader(dataset_size=args.num_samples, is_train=True, rotate=args.rotate)
+    test_dataset = SingleShapeAreaDataLoader(dataset_size=args.num_samples, is_train=False, rotate=args.rotate)
     
     # Evaluator
     evaluator = SingleShapeEvaluator()

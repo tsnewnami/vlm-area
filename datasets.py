@@ -70,12 +70,13 @@ What is the area of the shape drawn on the plot?
 """
 
 class SingleShapeAreaDataLoader(DataLoader):
-    def __init__(self, dataset_size: int = 50, is_train: bool = True) -> None:
-        super().__init__() # Always generates random times
+    def __init__(self, dataset_size: int = 50, is_train: bool = True, rotate: bool = False) -> None:
+        super().__init__() 
         self.dataset_size = dataset_size
         self.is_train = is_train
         self.prompt = SINGLE_AREA_PROMPT
-        self.filename = "temp_shape.png" # Fixed path for the temporary image
+        self.filename = "temp_shape.png"
+        self.rotate = rotate
         
     def __len__(self) -> int:
         # Return the specified size, mainly relevant for the test set iteration count
@@ -92,7 +93,7 @@ class SingleShapeAreaDataLoader(DataLoader):
         
         self.current_index += 1
 
-        (filepath, area) = generate_shape_plot()        
+        (filepath, area) = generate_shape_plot(rotate=self.rotate)        
 
         return (filepath, area)
 
