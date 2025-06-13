@@ -288,18 +288,18 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     
     # Log completions with zero rewards
     zero_reward_indices = (rewards_all == 0).nonzero(as_tuple=True)[0]
-    if len(zero_reward_indices) > 0:
-        print("\n=== Completions with Zero Rewards ===")
-        for idx in zero_reward_indices:
-            print(f"Completion {idx}:")
-            print(completions_text[idx])
-            print("---")
-        print("=====================================\n")
+    # if len(zero_reward_indices) > 0:
+    #     print("\n=== Completions with Zero Rewards ===")
+    #     for idx in zero_reward_indices:
+    #         print(f"Completion {idx}:")
+    #         print(completions_text[idx])
+    #         print("---")
+    #     print("=====================================\n")
 
-    print(f"Mean relative error: {metrics['mean_rel_error']}")
-    print(f"Mean XML format: {metrics['mean_xml_format']}")
-    print(f"Mean area format: {metrics['mean_area_format']}")
-    print(f"Mean area correctness: {metrics['mean_area_correctness']}")
+    # print(f"Mean relative error: {metrics['mean_rel_error']}")
+    # print(f"Mean XML format: {metrics['mean_xml_format']}")
+    # print(f"Mean area format: {metrics['mean_area_format']}")
+    # print(f"Mean area correctness: {metrics['mean_area_correctness']}")
 
     logits_to_keep = completion_tokens_mask.size(1)
 
@@ -308,8 +308,8 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     with torch.inference_mode():
         reference_log_probs = sequence_log_probs(reference,  prompt_completion_ids, attention_mask, image_path, tokenizer, logits_to_keep, prompt)
 
-    print(f"rewards_all: {rewards_all}")
-    print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
+    # print(f"rewards_all: {rewards_all}")
+    # print(f"rewards_all mean: {rewards_all.mean().item()}, std: {rewards_all.std().item()}")
     
     # Detailed log probabilities for completions
     masked_policy_log_probs = policy_log_probs * completion_tokens_mask
@@ -318,14 +318,14 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     mean_policy_completion_log_probs = (masked_policy_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
     mean_reference_completion_log_probs = (masked_reference_log_probs.sum(dim=1) / completion_tokens_mask.sum(dim=1).clamp(min=1)).mean().item()
 
-    print(f"policy_log_probs (completions) mean: {mean_policy_completion_log_probs}, policy_log_probs[0] (completions) sum: {(masked_policy_log_probs[0]).sum().item()}")
-    print(f"reference_log_probs (completions) mean: {mean_reference_completion_log_probs}, reference_log_probs[0] (completions) sum: {(masked_reference_log_probs[0]).sum().item()}")
+    # print(f"policy_log_probs (completions) mean: {mean_policy_completion_log_probs}, policy_log_probs[0] (completions) sum: {(masked_policy_log_probs[0]).sum().item()}")
+    # print(f"reference_log_probs (completions) mean: {mean_reference_completion_log_probs}, reference_log_probs[0] (completions) sum: {(masked_reference_log_probs[0]).sum().item()}")
 
     beta_kl = args.beta_kl     
 
     kl_divergence_per_token = torch.exp(reference_log_probs - policy_log_probs) - (reference_log_probs - policy_log_probs) - 1
-    print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
-    print(f"kl_divergence_per_token mean: {kl_divergence_per_token.mean().item()}")
+    # print(f"kl_divergence_per_token sum mean: {kl_divergence_per_token.sum(dim=1).mean().item()}")
+    # print(f"kl_divergence_per_token mean: {kl_divergence_per_token.mean().item()}")
     
     # Calculate the advantage 
     advantages_per_token = (rewards_all - rewards_all.mean()) / (rewards_all.std() + 1e-8)
@@ -336,10 +336,10 @@ def grpo_loss(policy, reference, tokenizer, evaluator, image_path: str, prompt: 
     loss_per_token = -(loss_per_token - beta_kl * kl_divergence_per_token) 
     loss = ((loss_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1)).mean()
     
-    print(f"loss: {loss.item()}")
+    # print(f"loss: {loss.item()}")
     # Calculate mean KL divergence across all batches
     mean_kl = ((kl_divergence_per_token * completion_tokens_mask).sum(dim=1) / completion_tokens_mask.sum(dim=1).to(torch.float32)).mean()
-    print(f"mean_kl: {mean_kl.item()}")
+    # print(f"mean_kl: {mean_kl.item()}")
 
     return loss, metrics
 
@@ -434,10 +434,15 @@ if __name__ == "__main__":
             optimizer.zero_grad()
         
         # Log mean_rel_error to a file for plotting
-        with open('rewards.log', 'a') as f:
-            f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
-            f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
-            f.write(f"Mean area format: {metrics['mean_area_format']}\n")
-            f.write(f"Mean area correctness: {metrics['mean_area_correctness']}\n")
+        # with open('rewards.log', 'a') as f:
+        #     f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
+        #     f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
+        #     f.write(f"Mean area format: {metrics['mean_area_format']}\n")
+        #     f.write(f"Mean area correctness: {metrics['mean_area_correctness']}\n")
+
+        # Print the rewards for each function
+        print(f"Mean XML format: {metrics['mean_xml_format']}\n")
+        print(f"Mean area format: {metrics['mean_area_format']}\n")
+        print(f"Mean area correctness: {metrics['mean_area_correctness']}\n") 
         
         
