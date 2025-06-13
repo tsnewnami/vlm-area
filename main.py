@@ -433,16 +433,11 @@ if __name__ == "__main__":
             scheduler.step()
             optimizer.zero_grad()
         
-        # Log mean_rel_error to a file for plotting
-        # with open('rewards.log', 'a') as f:
-        #     f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
-        #     f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
-        #     f.write(f"Mean area format: {metrics['mean_area_format']}\n")
-        #     f.write(f"Mean area correctness: {metrics['mean_area_correctness']}\n")
+        with open('rewards.log', 'a') as f:
+            f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
+            f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
+            f.write(f"Mean area format: {metrics['mean_area_format']}\n")
+            f.write(f"Mean area correctness: {metrics['mean_area_correctness']}\n")
 
-        # Print the rewards for each function
-        print(f"Mean XML format: {metrics['mean_xml_format']}\n")
-        print(f"Mean area format: {metrics['mean_area_format']}\n")
-        print(f"Mean area correctness: {metrics['mean_area_correctness']}\n") 
         
         
