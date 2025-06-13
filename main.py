@@ -433,7 +433,7 @@ if __name__ == "__main__":
             scheduler.step()
             optimizer.zero_grad()
         
-        with open('rewards.log', 'a') as f:
+        with open('rewards_rotated.log', 'a') as f:
             f.write(f"Mean relative error: {metrics['mean_rel_error']}\n")
             f.write(f"Mean XML format: {metrics['mean_xml_format']}\n")
             f.write(f"Mean area format: {metrics['mean_area_format']}\n")
