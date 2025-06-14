@@ -58,7 +58,7 @@ def generate_shape_plot(filename="shape.png", rotate=False):
     min_coord = 0
     max_coord = grid_size  # Using new grid size
 
-    min_shape_dim = 20 
+    min_shape_dim = 5 
     max_shape_dim = 35 
 
     if chosen_shape == 'square':
@@ -174,3 +174,5 @@ if __name__ == '__main__':
     print(f"Generated: {img_path1}, Area: {area1:.2f}")
     img_path2, area2 = generate_shape_plot(filename="shape_rotated.png", rotate=True)
     print(f"Generated rotated: {img_path2}, Area: {area2:.2f}")
+    img_path1, area1 = generate_shape_plot(filename="shape_area_range.png")
+    print(f"Generated: {img_path1}, Area: {area1:.2f}")
