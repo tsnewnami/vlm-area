@@ -362,7 +362,7 @@ def parse_args():
     parser.add_argument("--update_ref_model_iter", type=int, default=200)
     parser.add_argument("--ref_model_mixup_alpha", type=float, default=0.1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
-    parser.add_argument("--rotate", type=bool, default=True, help="Enable random rotation of shapes generated")
+    parser.add_argument("--rotate", type=bool, default=False, help="Enable random rotation of shapes generated")
     return parser.parse_args()
 
 
